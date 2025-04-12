@@ -4,6 +4,9 @@ using UnityEngine;
 
 public class AntivirusEnemy : MonoBehaviour
 {
+    [Header("Debug & Control")]
+    public bool isPaused = false;
+
     // References
     [Header("References")]
     public Transform body;
@@ -95,6 +98,12 @@ public class AntivirusEnemy : MonoBehaviour
 
     void Update()
     {
+        if (isPaused)
+        {
+            rb.velocity = Vector2.zero;
+            return;
+        }
+
         // Update timers
         if (dashTimer > 0) dashTimer -= Time.deltaTime;
         if (alertTimer > 0) alertTimer -= Time.deltaTime;

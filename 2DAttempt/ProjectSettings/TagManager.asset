@@ -53,3 +53,6 @@ TagManager:
   - name: AI
     uniqueID: 3077521911
     locked: 0
+  - name: highlight
+    uniqueID: 2120282705
+    locked: 0
