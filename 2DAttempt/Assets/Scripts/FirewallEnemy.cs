@@ -24,8 +24,22 @@ public class FirewallEnemy : MonoBehaviour
     public float pulseSpeed = 3f;
     public float pulseAmount = 0.2f;
     public float flameSpeed = 4f;
-    public Color activeColor = new Color(1f, 0.4f, 0.2f, 1f);   // Orange/red
-    public Color inactiveColor = new Color(0.4f, 0.4f, 0.4f, 1f); // Gray
+
+    [Header("Active Fire Colors")]
+    public Color[] fireColors = new Color[] {
+        new Color(1f, 0.3f, 0.1f, 1f),  // Deep orange
+        new Color(1f, 0.5f, 0.1f, 1f),  // Orange
+        new Color(1f, 0.7f, 0.2f, 1f),  // Light orange/yellow
+        new Color(1f, 0.8f, 0.3f, 1f)   // Yellow
+    };
+    public float colorChangeSpeed = 1.5f; // Speed at which colors shift
+
+    [Header("Inactive Ember Effect")]
+    public Color baseEmberColor = new Color(0.4f, 0.4f, 0.4f, 1f); // Base gray color
+    public Color emberGlowColor = new Color(0.6f, 0.2f, 0.1f, 1f); // Reddish ember color
+    public float emberGlowIntensity = 0.3f; // How strong the ember effect is (0-1)
+    public float emberFlowSpeed = 0.8f; // How quickly the ember effect moves
+    public float emberVariation = 0.4f; // How varied the ember effect is
 
     // State tracking
     private bool isActive;
@@ -35,6 +49,7 @@ public class FirewallEnemy : MonoBehaviour
     private SpriteRenderer[] flameRenderers;
     private Vector3[] flameOriginalPositions;
     private Vector3[] flameOriginalScales;
+    private float[] brickColorOffsets; // Random offset for each brick's color animation
 
     void Start()
     {
@@ -47,6 +62,9 @@ public class FirewallEnemy : MonoBehaviour
 
         // Cache renderers and initial transforms
         InitializeRenderers();
+
+        // Generate random offsets for each brick's color animation
+        InitializeBrickColorOffsets();
 
         // Apply initial visual state
         UpdateVisuals();
@@ -67,14 +85,20 @@ public class FirewallEnemy : MonoBehaviour
             }
         }
 
-        // Only process damage and animations when active
+        // Process animations based on state
         if (isActive)
         {
             // Check for player contact
             CheckPlayerContact();
 
-            // Update visual effects
+            // Update visual effects for active state
             AnimateFirewall();
+            AnimateBrickColors();
+        }
+        else
+        {
+            // Update visual effects for inactive state
+            AnimateEmbers();
         }
     }
 
@@ -110,14 +134,34 @@ public class FirewallEnemy : MonoBehaviour
         }
     }
 
+    void InitializeBrickColorOffsets()
+    {
+        // Create random offsets for each brick to make them animate at different phases
+        brickColorOffsets = new float[layerRects.Length];
+        for (int i = 0; i < layerRects.Length; i++)
+        {
+            brickColorOffsets[i] = Random.Range(0f, 10f); // Random starting offset
+        }
+    }
+
     void UpdateVisuals()
     {
         // Update layer colors
-        foreach (SpriteRenderer renderer in layerRenderers)
+        for (int i = 0; i < layerRenderers.Length; i++)
         {
-            if (renderer != null)
+            if (layerRenderers[i] != null)
             {
-                renderer.color = isActive ? activeColor : inactiveColor;
+                if (isActive)
+                {
+                    // Set initial fire color
+                    int colorIndex = i % fireColors.Length;
+                    layerRenderers[i].color = fireColors[colorIndex];
+                }
+                else
+                {
+                    // Set initial ember color (gray with slight variation)
+                    layerRenderers[i].color = baseEmberColor;
+                }
             }
         }
 
@@ -125,6 +169,91 @@ public class FirewallEnemy : MonoBehaviour
         foreach (Transform flame in flames)
         {
             flame.gameObject.SetActive(isActive);
+        }
+    }
+
+    void AnimateBrickColors()
+    {
+        // Skip if no fire colors defined
+        if (fireColors.Length == 0)
+            return;
+
+        // Animate each brick with fire-like color transitions
+        for (int i = 0; i < layerRenderers.Length; i++)
+        {
+            if (layerRenderers[i] != null)
+            {
+                // Calculate unique time value for this brick
+                float timeValue = Time.time * colorChangeSpeed + brickColorOffsets[i];
+
+                // Make bottom bricks redder/darker and top bricks more yellow/brighter
+                float rowFactor = (float)i / layerRenderers.Length; // 0 = bottom, 1 = top
+
+                // Calculate which two colors to blend between
+                int colorIndex = Mathf.FloorToInt(timeValue % fireColors.Length);
+                int nextColorIndex = (colorIndex + 1) % fireColors.Length;
+
+                // Get blend factor between the two colors (0-1)
+                float blendFactor = Mathf.PingPong(timeValue, 1f);
+
+                // Create the brick color by blending between the two chosen colors
+                Color brickColor = Color.Lerp(fireColors[colorIndex], fireColors[nextColorIndex], blendFactor);
+
+                // Apply row-based tinting (bottom rows darker, top rows brighter)
+                brickColor = Color.Lerp(
+                    new Color(brickColor.r * 0.8f, brickColor.g * 0.6f, brickColor.b * 0.6f, brickColor.a),
+                    new Color(brickColor.r, brickColor.g * 1.1f, brickColor.b * 0.5f, brickColor.a),
+                    rowFactor);
+
+                // Apply the color to the brick
+                layerRenderers[i].color = brickColor;
+            }
+        }
+    }
+
+    void AnimateEmbers()
+    {
+        // Animate each brick with ember-like effects
+        for (int i = 0; i < layerRenderers.Length; i++)
+        {
+            if (layerRenderers[i] != null)
+            {
+                // Calculate unique time value for this brick
+                float timeValue = Time.time * emberFlowSpeed + brickColorOffsets[i];
+
+                // Generate ember glow pattern using Perlin noise
+                // This creates a flowing, organic pattern that moves across the bricks
+                float emberX = (i % 3) * 0.5f; // Horizontal position within grid
+                float emberY = (i / 3) * 0.5f; // Vertical position within grid
+
+                // Use noise to create flowing pattern
+                float noiseVal = Mathf.PerlinNoise(
+                    emberX + timeValue * 0.3f,
+                    emberY + timeValue * 0.2f
+                );
+
+                // Add some variation with sin waves
+                float sineVal = Mathf.Sin(timeValue + i * 0.7f) * 0.5f + 0.5f;
+
+                // Combine noise and sine for more organic flow
+                float emberValue = Mathf.Lerp(noiseVal, sineVal, 0.3f);
+
+                // Apply random variation
+                emberValue *= 1f + Random.Range(-emberVariation, emberVariation);
+
+                // Clamp and scale the ember intensity
+                emberValue = Mathf.Clamp01(emberValue) * emberGlowIntensity;
+
+                // Create ember color by blending base color with glow color
+                Color emberColor = Color.Lerp(baseEmberColor, emberGlowColor, emberValue);
+
+                // Bottom bricks should be slightly more intense (like real embers)
+                float bottomFactor = 1f - ((float)i / layerRenderers.Length);
+                emberColor = Color.Lerp(emberColor, emberGlowColor, bottomFactor * 0.2f);
+
+                // Apply the color to the brick
+                layerRenderers[i].color = emberColor;
+            }
         }
     }
 
@@ -139,10 +268,10 @@ public class FirewallEnemy : MonoBehaviour
                 float pulseOffset = i * 0.2f;
                 float pulse = 1 + Mathf.Sin((Time.time + pulseOffset) * pulseSpeed) * pulseAmount;
 
-                // Apply pulse to opacity
+                // Apply pulse to opacity without changing the color
                 Color color = layerRenderers[i].color;
                 layerRenderers[i].color = new Color(color.r, color.g, color.b,
-                                                   Mathf.Lerp(0.7f, 1f, pulse));
+                                                  Mathf.Lerp(0.7f, 1f, pulse));
             }
         }
 
@@ -180,6 +309,34 @@ public class FirewallEnemy : MonoBehaviour
                     flameOriginalPositions[i].x,
                     flameOriginalPositions[i].y + (heightDifference / 2),
                     flameOriginalPositions[i].z);
+
+                // Also animate flame colors
+                if (flameRenderers[i] != null)
+                {
+                    // Make flames shift between colors a bit faster than bricks
+                    float timeValue = Time.time * (colorChangeSpeed * 1.5f) + i;
+
+                    // Calculate which two colors to blend between
+                    int colorIndex = Mathf.FloorToInt(timeValue % fireColors.Length);
+                    int nextColorIndex = (colorIndex + 1) % fireColors.Length;
+
+                    // Get blend factor between the two colors (0-1)
+                    float blendFactor = Mathf.PingPong(timeValue, 1f);
+
+                    // Create the flame color by blending between the two chosen colors
+                    Color flameColor = Color.Lerp(fireColors[colorIndex], fireColors[nextColorIndex], blendFactor);
+
+                    // Make flames brighter than bricks
+                    flameColor = new Color(
+                        Mathf.Min(flameColor.r * 1.2f, 1f),
+                        Mathf.Min(flameColor.g * 1.2f, 1f),
+                        flameColor.b,
+                        flameColor.a
+                    );
+
+                    // Apply the color
+                    flameRenderers[i].color = flameColor;
+                }
             }
         }
     }
@@ -247,6 +404,42 @@ public class FirewallEnemy : MonoBehaviour
         float duration = wasActive ? deactivationDuration : activationCooldown;
         float elapsed = 0;
 
+        // Store original colors of bricks before transition
+        Color[] originalBrickColors = new Color[layerRenderers.Length];
+        for (int i = 0; i < layerRenderers.Length; i++)
+        {
+            if (layerRenderers[i] != null)
+            {
+                originalBrickColors[i] = layerRenderers[i].color;
+            }
+        }
+
+        // Prepare target colors based on transition direction
+        Color[] targetColors = new Color[layerRenderers.Length];
+        for (int i = 0; i < layerRenderers.Length; i++)
+        {
+            if (wasActive) // Deactivating - use varied ember colors
+            {
+                // Calculate a unique ember color for this brick
+                float rowFactor = (float)i / layerRenderers.Length; // Bottom-to-top factor
+                float randomFactor = Random.Range(0f, 0.3f); // Random variation
+                targetColors[i] = Color.Lerp(baseEmberColor, emberGlowColor, randomFactor + (rowFactor * 0.1f));
+            }
+            else // Activating - use fire colors
+            {
+                // Get a color from the fire palette based on brick position
+                int colorIndex = i % fireColors.Length;
+
+                // Bottom bricks more red, top bricks more yellow
+                float rowFactor = (float)i / layerRenderers.Length;
+                targetColors[i] = Color.Lerp(
+                    fireColors[0], // More red
+                    fireColors[Mathf.Min(fireColors.Length - 1, 2)], // More yellow
+                    rowFactor
+                );
+            }
+        }
+
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
@@ -288,12 +481,12 @@ public class FirewallEnemy : MonoBehaviour
                     }
                 }
 
-                // Fade layers to inactive color
+                // Fade each brick to its target ember color
                 for (int i = 0; i < layerRenderers.Length; i++)
                 {
                     if (layerRenderers[i] != null)
                     {
-                        layerRenderers[i].color = Color.Lerp(activeColor, inactiveColor, t);
+                        layerRenderers[i].color = Color.Lerp(originalBrickColors[i], targetColors[i], t);
                     }
                 }
             }
@@ -331,12 +524,12 @@ public class FirewallEnemy : MonoBehaviour
                     }
                 }
 
-                // Fade layers to active color
+                // Fade each brick from ember to its target fire color
                 for (int i = 0; i < layerRenderers.Length; i++)
                 {
                     if (layerRenderers[i] != null)
                     {
-                        layerRenderers[i].color = Color.Lerp(inactiveColor, activeColor, t);
+                        layerRenderers[i].color = Color.Lerp(originalBrickColors[i], targetColors[i], t);
                     }
                 }
             }
